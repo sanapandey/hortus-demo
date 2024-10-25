@@ -12,7 +12,7 @@ from sklearn.linear_model import LogisticRegression
 import numpy as np 
 import matplotlib.pyplot as plt
 import seaborn as sns
-
+import os
 
 
 
@@ -20,7 +20,8 @@ import seaborn as sns
 # Load the Yelp dataset
 @st.cache_data 
 def load_data(): 
-    return pd.read_json('data/yelp_dataset/truncated_yelp_academic_dataset_review.json')
+    file_path = os.path.join(os.path.dirname(__file__), 'data/yelp_dataset/truncated_yelp_academic_dataset_review.json')
+    return pd.read_json(file_path)
 
 data = load_data()
 
