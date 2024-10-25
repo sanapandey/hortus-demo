@@ -283,17 +283,21 @@ elif use_case == "Home":
     landing_page()
 
 elif use_case == "Data":
-    st.subheader("Dataset Overview")
-    st.write("The data the metrics currently describe is extracted from [The Yelp Dataset](https://www.yelp.com/dataset). The information that we use to calculate the metrics are primarily the stars, review text, review id, and date. Here is a preview of the information it contains:")
-    st.dataframe(data.head(20)) 
+    with st.spinner("Calculating regression metrics..."):
+        try:
+            st.subheader("Dataset Overview")
+            st.write("The data the metrics currently describe is extracted from [The Yelp Dataset](https://www.yelp.com/dataset). The information that we use to calculate the metrics are primarily the stars, review text, review id, and date. Here is a preview of the information it contains:")
+            st.dataframe(data.head(20)) 
 
-    st.write("### Star Ratings Distribution")
-    plot_star_distribution(data)
+            st.write("### Star Ratings Distribution")
+            plot_star_distribution(data)
 
-    # Plotting the review length distribution
-    st.write("### Review Length Distribution")
-    plot_review_length_distribution(data)
+            # Plotting the review length distribution
+            st.write("### Review Length Distribution")
+            plot_review_length_distribution(data)
 
+        except Exception as e:
+            st.error(f"An error occurred: {e}")
 
 
 
