@@ -12,7 +12,7 @@ from sklearn.linear_model import LogisticRegression
 import numpy as np 
 import matplotlib.pyplot as plt
 import seaborn as sns
-import os
+
 
 
 
@@ -20,8 +20,7 @@ import os
 # Load the Yelp dataset
 @st.cache_data 
 def load_data(): 
-    file_path = os.path.join(os.path.dirname(__file__), 'data/yelp_dataset/truncated_yelp_academic_dataset_review.json')
-    return pd.read_json(file_path)
+    return pd.read_json('data/yelp_dataset/truncated_yelp_academic_dataset_review.json')
 
 data = load_data()
 
@@ -171,12 +170,14 @@ def landing_page():
     st.write("""
         This dashboard provides various metrics to evaluate AI models based on different use cases:
         
+        - **Data Assessment**: Understand the shape and structure of unprocessed, raw data. 
         - **Classification**: Evaluate model performance using accuracy, precision, recall, and AUC-ROC.
         - **Regression**: Analyze regression model metrics like Mean Absolute Error (MAE) and R-squared.
         - **Clustering**: Assess clustering performance with silhouette score, Rand index, and Dunn index.
         - **Ranking**: Measure ranking performance using Mean Average Precision (MAP), NDCG, and Precision at K.
+        - **Dynamic Assessment**: Track shifts in data in real time, and measure model performance over time across evaluation strategies.
         
-        Use the sidebar to navigate to different sections and explore the metrics. This demo acts on data pulled from [The Yelp Dataset](https://www.yelp.com/dataset), but all of these metrics can apply to your own AI models via the [Reward Reports](https://reward-reports-a0f858c3c007.herokuapp.com/) documentation interface!"
+        Use the sidebar to navigate to different sections and explore the metrics. The demos of individual metrics acts on data pulled from [The Yelp Dataset](https://www.yelp.com/dataset), but all of these metrics can apply to your own AI models via the [Reward Reports](https://reward-reports-a0f858c3c007.herokuapp.com/) documentation interface! Our dynamic assessment feature is trained on real city data drawn from the Austin, Texas and Boston, Massachussets. 
     """)
 
 
@@ -199,12 +200,154 @@ def plot_review_length_distribution(data):
     plt.xlabel("Length of Review (Characters)")
     plt.ylabel("Frequency")
     st.pyplot(plt)
+import streamlit as st
+import pandas as pd
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.cluster import KMeans
+import matplotlib.pyplot as plt
+import numpy as np
+import streamlit as st
+import pandas as pd
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import precision_score, accuracy_score
+import matplotlib.pyplot as plt
+import numpy as np
+from sklearn.linear_model import LinearRegression
+
+# Function to load and preprocess data
+def load_real_data():
+    url = "Austin_Cultural_Survey_Data.csv"  # Replace with your dataset URL
+    data = pd.read_csv(url)
+    data.dropna(subset=['Response', 'Auditor-assigned Category'], inplace=True)
+    return data
+
+# Function to separate positive and negative responses
+def separate_responses(data):
+    positive_responses = data[data['Auditor-assigned Category'] == 'Positive']
+    negative_responses = data[data['Auditor-assigned Category'] == 'Negative']
+    return positive_responses, negative_responses
+
+# Function to cluster responses and extract keywords
+def cluster_responses(responses, n_clusters=5):
+    vectorizer = TfidfVectorizer(stop_words='english')
+    X = vectorizer.fit_transform(responses)
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+    kmeans.fit(X)
+    return kmeans.labels_, vectorizer.get_feature_names_out(), kmeans.cluster_centers_, X
+
+# Function to extract unique keywords for each cluster
+def get_keywords_per_cluster(labels, centers, feature_names, n_keywords=5):
+    keywords = {}
+    for i in range(centers.shape[0]):
+        center = centers[i]
+        top_indices = center.argsort()[-n_keywords:][::-1]  # Top keywords
+        keywords[i] = [feature_names[index] for index in top_indices]
+    return keywords
+
+# Function to plot clusters with keywords in the legend
+# Function to plot clusters with keywords in the legend
+def plot_clusters_with_keywords(labels, centers, feature_names, keywords):
+    fig, ax = plt.subplots(figsize=(12, 6))
+    unique_labels = np.unique(labels)
+
+    for label in unique_labels:
+        if label == -1:  # Skip noise label if it exists
+            continue
+
+        cluster_points = np.where(labels == label)[0]
+        # Increase size of the scatter points
+        ax.scatter(cluster_points, np.zeros_like(cluster_points) + label, alpha=0.6, s=100, label=f'Cluster {label}')
+
+        # Plot a translucent halo around the cluster
+        ax.scatter(cluster_points, np.zeros_like(cluster_points) + label, 
+                   alpha=0.2, s=400, color=plt.cm.tab10(label), edgecolor='w')
+
+        # Plot cluster center
+        ax.scatter(label, np.mean(cluster_points), s=500, color='red', marker='x', label=f'Center of Cluster {label}')
+    
+    # Set x-axis limits to start at 0
+    ax.set_xlim(0, len(unique_labels) + 1)
+    ax.set_ylim(-0.5, len(unique_labels) - 0.5)
+
+    # Add keywords to the legend
+    legend_labels = [f'Cluster {label}: {", ".join(keywords[label])}' for label in unique_labels if label != -1]
+    ax.legend(legend_labels, loc='upper right', bbox_to_anchor=(1.15, 1))
+    
+    ax.set_title("Clusters with Unique Keywords")
+    ax.set_xlabel("Clusters")
+    ax.set_yticks([])
+    
+    plt.tight_layout()
+    st.pyplot(fig)
+
+
+# Function to train a classifier and evaluate metrics
+def evaluate_classifier(data, response_col, category_col, increment):
+    precision_scores = []
+    accuracy_scores = []
+    increments = []
+    
+    # Prepare the data for the model
+    X = data[response_col].values
+    y = data[category_col].map({'Positive': 1, 'Negative': 0}).values  # Map categories to binary
+
+    for i in range(increment, len(X) + 1, increment):
+        X_subset = X[:i]
+        y_subset = y[:i]
+        
+        vectorizer = TfidfVectorizer(stop_words='english')
+        X_vec = vectorizer.fit_transform(X_subset)
+
+        model = LogisticRegression()
+        model.fit(X_vec, y_subset)
+        y_pred = model.predict(X_vec)
+
+        precision = precision_score(y_subset, y_pred)
+        accuracy = accuracy_score(y_subset, y_pred)
+
+        precision_scores.append(precision)
+        accuracy_scores.append(accuracy)
+        increments.append(i)
+
+    return increments, precision_scores, accuracy_scores
+
+def prepare_response_counts(data):
+    positive_count = data[data['Auditor-assigned Category'] == 'Positive'].shape[0]
+    negative_count = data[data['Auditor-assigned Category'] == 'Negative'].shape[0]
+    
+    return positive_count, negative_count
+
+def evaluate_separate_regressions(data, response_col, category_col, increment):
+    positive_counts = []
+    negative_counts = []
+    increments = []
+
+    for i in range(increment, len(data) + 1, increment):
+        subset = data[:i]
+        positive_count, negative_count = prepare_response_counts(subset)
+        positive_counts.append(positive_count)
+        negative_counts.append(negative_count)
+        increments.append(i)
+
+    # Reshape the increments for sklearn
+    X = np.array(increments).reshape(-1, 1)
+
+    # Fit the regression model for positive counts
+    model_positive = LinearRegression()
+    model_positive.fit(X, positive_counts)
+
+    # Fit the regression model for negative counts
+    model_negative = LinearRegression()
+    model_negative.fit(X, negative_counts)
+    
+    return increments, positive_counts, negative_counts, model_positive, model_negative
 # Streamlit app title
 st.title("Welcome to the Hortus Trellis")
 
 st.sidebar.title("Hortus Trellis")
 st.sidebar.subheader("Select Use Case")
-use_case = st.sidebar.radio("Choose a metric type or visualization:", ("Home", "Data", "Classification", "Regression", "Clustering", "Ranking"))
+use_case = st.sidebar.radio("Choose a metric type or visualization:", ("Home", "Data", "Classification", "Regression", "Clustering", "Ranking", "Dynamic Assessment"))
 
 if use_case == "Classification":
     st.subheader("Classification Metrics")
@@ -283,7 +426,6 @@ elif use_case == "Home":
     landing_page()
 
 elif use_case == "Data":
-    with st.spinner("Calculating regression metrics..."):
         try:
             st.subheader("Dataset Overview")
             st.write("The data the metrics currently describe is extracted from [The Yelp Dataset](https://www.yelp.com/dataset). The information that we use to calculate the metrics are primarily the stars, review text, review id, and date. Here is a preview of the information it contains:")
@@ -298,6 +440,80 @@ elif use_case == "Data":
 
         except Exception as e:
             st.error(f"An error occurred: {e}")
+elif use_case == "Dynamic Assessment":
+    data = load_real_data()
+    positive_responses, negative_responses = separate_responses(data)
+    combined_data = pd.concat([positive_responses, negative_responses], ignore_index=True)
+    st.subheader("Dynamic Assessment of Models and Performance")
+    st.write("Here, we have combined real citizen data from the City of Boston and the City of Austin about the availability and function of city services. The data is comprised of binary inputs like thumbs up and down buttons, along with more detailed, nuanced text.")
+    st.write("Below, we have sorted the citizen feedback into positive and negative categories, so that we can isolate successful and nonsuccessful avenues for growth with government initiatives:")
+    st.write("Example Positive Citizen Feedback:")
+    st.dataframe(positive_responses, use_container_width=True)
+
+    st.write("Example Negative Citizen Feedback:")
+    st.dataframe(negative_responses, use_container_width=True)
+
+
+    st.subheader("Clustering Citizen Feedback", divider=True)
+    st.write("One critical dimension of analyzing user data is harnessing it to become more proactive about governance. Our clustering functionality allows us to track growing trends and topics in feedback so that cities can respond to public concerns and track effective services early.")
+    st.write("In general, clustering is helpful to draw insight from uncategorized, messy datasets. The size of the clusters you select allows you to explore broader trends (fewer clusters) or isolate nuanced details (more clusters). Try toggling with the number of clusters below to see some key words and categories in the citizen feedback:")
+    n_clusters = st.slider("Select number of clusters", 2, 10, 5)
+
+
+    # Existing clustering and plotting code...
+    if st.button("Cluster Responses"):
+        positive_labels, positive_features, positive_centers, positive_X = cluster_responses(positive_responses['Response'].tolist(), n_clusters)
+        negative_labels, negative_features, negative_centers, negative_X = cluster_responses(negative_responses['Response'].tolist(), n_clusters)
+
+        # Extract keywords for each cluster
+        positive_keywords = get_keywords_per_cluster(positive_labels, positive_centers, positive_features)
+        negative_keywords = get_keywords_per_cluster(negative_labels, negative_centers, negative_features)
+
+        # Plot clusters for positive and negative responses
+        st.subheader("Positive Responses Clusters")
+        st.write("These are the categories and keywords that are linked most closely to positive feedback:")
+        plot_clusters_with_keywords(positive_labels, positive_centers, positive_features, positive_keywords)
+
+        st.write("The legend of the visualization shows the key words that drive each emerging topic. ")
+
+        st.subheader("Negative Responses Clusters")
+        st.write("These are the categories and keywords that are linked most closely to negative feedback:")
+        plot_clusters_with_keywords(negative_labels, negative_centers, negative_features, negative_keywords)
+
+    st.subheader("Assessing Model Performance Through Regression:", divider=True)
+    st.write("We also can use the Hortus Trellis to ensure a model is operating at its best. Here, we see how predict how accurately the model can anticipate good and bad changes in the system with the addition of data, simulating model performance over time. As more data is added, we get a general sense of where the model's success plateaus.")
+    st.write("Like the clustering example, you can play around with how the addition of more data provides more information about how well the model is performing:")
+    increment = st.slider("Select Data Increment for Response Prediction:", min_value=1, max_value=len(combined_data), value=5, step=1)
+    # Regression evaluation section
+    if st.button("Evaluate Regression Model"):
+        increments, positive_counts, negative_counts, model_positive, model_negative = evaluate_separate_regressions(
+            combined_data, 'Response', 'Auditor-assigned Category', increment)
+
+        # Plotting the positive and negative counts
+        fig, ax = plt.subplots(figsize=(12, 6))
+        ax.plot(increments, positive_counts, label='Predicted True Positives', marker='o', color='green')
+        ax.plot(increments, negative_counts, label='Predicted False Positives', marker='o', color='red')
+        
+        # Predict future values
+        future_increments = np.arange(increments[-1] + 1, increments[-1] + 21, 1).reshape(-1, 1)
+        positive_future = model_positive.predict(future_increments)
+        negative_future = model_negative.predict(future_increments)
+
+        # Plot future predictions
+        ax.plot(future_increments, positive_future, linestyle='--', color='lightgreen', label='True Positive Trend')
+        ax.plot(future_increments, negative_future, linestyle='--', color='lightcoral', label='False Positive Trend')
+
+        ax.set_title("True and False Positives Over Incremental Data")
+        ax.set_xlabel("Number of Responses Used for Training")
+        ax.set_ylabel("Count of Responses")
+        ax.legend()
+        ax.grid()
+
+        st.pyplot(fig)
+        st.write("By adding more data to the model training process and creating a regression, we can track how many true positives and false positives the model detects over time. This gives us a sense of how model performance is limited by data as opposed to core functionality, allowing clients to compare models in their projected best state. ")
+
+
+
 
 
 
